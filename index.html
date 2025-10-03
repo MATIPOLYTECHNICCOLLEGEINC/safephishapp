@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SafePhish - Dashboard</title>
+  <link rel="icon" href="https://static.thenounproject.com/png/shield-icon-1270182-512.png">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Content Security Policy to mitigate XSS -->
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    script-src 'self' 'unsafe-inline' https://accounts.google.com https://cdn.tailwindcss.com;connect-src 'self' *;
+    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+    img-src 'self' data: https:;
+    connect-src 'self';
+    frame-src https://accounts.google.com;">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = { darkMode: 'class' }
+  </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; overflow: hidden;}
+        .interactive-card { transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out; cursor: pointer; }
+        .interactive-card:hover { transform: translateY(-5px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05); }
+        .dark .interactive-card:hover { box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3), 0 4px 6px -2px rgba(0,0,0,0.2); }
+        .modal-overlay { transition: opacity 0.3s ease; }
+        .modal-content { transition: transform 0.3s ease, opacity 0.3s ease; }
+        .loader { border-top-color: #3b82f6; animation: spin 1s ease-in-out infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .toggle-checkbox:checked + .toggle-label .toggle-ball { transform: translateX(100%); }
+        .toggle-checkbox:checked + .toggle-label { background-color: #10b981; }
+        #monitored-apps-content {transition: max-height 0.5s ease-in-out, opacity 0.3s ease-in-out;max-height: 0;overflow: hidden;opacity: 0;}
+        #monitored-apps-content.expanded {max-height: 2000px; opacity: 1;}
+        .app-shell {
+            width: 100%; max-width: 28rem; margin: auto;
+            background-color: #ffffff; color: #1e293b;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            border-radius: 1.5rem; overflow: hidden;
+            height: 90vh; max-height: 900px;
+            display: flex; flex-direction: column;
+            position: relative;
+        }
+        .dark .app-shell { background-color: #0f172a; color: #e2e8f0; }
+        .gemini-loader { border-color: rgba(255, 255, 255, 0.2); border-top-color: #ffffff; }
+        .privacy-checkup-option { transition: background-color 0.2s; }
+    </style>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body class="bg-slate-100 dark:bg-slate-900 flex justify-center items-center min-h-screen">
+
+    <!-- LOGIN SCREEN -->
+    <div id="login-screen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-100 dark:bg-slate-900">
+      <div class="bg-white dark:bg-slate-800 p-8 rounded-xl shadow-2xl w-full max-w-sm text-center">
+        <div class="flex justify-center mb-4">
+             <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-emerald-500"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+        </div>
+        <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-2">Welcome to SafePhish</h1>
+        <p class="pb-6 text-slate-500 dark-text-slate-400">Sign in with your Google account to secure your device.</p>
+        <!-- Google Sign-In button container -->
+        <div id="g_id_onload"
+            data-client_id="597575894491-4ahhnm66abskmjeb0i1drogoo43u64oa.apps.googleusercontent.com"
+            data-context="signin"
+            data-ux_mode="popup"
+            data-callback="handleCredentialResponse"
+            data-auto_prompt="false">
+        </div>
+        <!-- Wrapper div to ensure the button inside is centered -->
+        <div class="flex justify-center">
+            <div class="g_id_signin"
+                data-type="standard"
+                data-shape="rectangular"
+                data-theme="outline"
+                data-text="signin_with"
+                data-size="large"
+                data-logo_alignment="left">
+            </div>
+        </div>
+      </div>
+    </div>
+    <!-- APPSHELL -->
+    <div class="app-shell hidden" style="margin-left: auto!important; margin-right: auto!important; margin-top: 0!important; margin-bottom: auto!important; height: 95vh!important;">
+        <div id="initial-loader" class="hidden"></div>
+            <!-- (Dashboard) -->
+             <div id="app-container" class="h-full flex flex-col">
+            <header class="p-6 flex items-center justify-between sticky top-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm z-10 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
+                 <div class="flex items-center space-x-3"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-emerald-500"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg><h1 class="text-xl font-bold tracking-wider">SafePhish</h1></div>
+            </header>
+            <div class="flex-grow overflow-y-auto">
+                <!-- SECURITY SCORE -->
+                <main id="dashboard-view" class="p-6 space-y-8">
+                    <div class="flex justify-center items-center">
+                        <div class="relative w-48 h-48">
+                            <svg class="w-full h-full" viewBox="0 0 100 100">
+                                <circle class="text-slate-200 dark:text-slate-700" stroke-width="10" stroke="currentColor" fill="transparent" r="45" cx="50" cy="50"></circle>
+                                <circle class="progress-circle-bar text-emerald-500 transition-all duration-1000" stroke-width="10" stroke-linecap="round" stroke="currentColor" fill="transparent" r="45" cx="50" cy="50" style="stroke-dasharray: 283; stroke-dashoffset: 283;"></circle>
+                            </svg>
+                            <div class="absolute inset-0 flex flex-col items-center justify-center">
+                                <span id="security-score-text" class="text-4xl font-bold text-slate-800 dark:text-slate-100">0%</span>
+                                <span class="text-sm font-medium text-slate-500 dark:text-slate-400">Security Score</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="text-center mt-6">
+                      <p id="monitored-apps-count" class="text-lg font-semibold text-slate-800 dark:text-slate-100">3 Apps Monitored</p>
+                    </div>
+
+                    <div class="bg-slate-100 dark:bg-slate-800 p-4 rounded-xl">
+                        <h3 class="font-semibold text-base mb-2">AI Privacy Checkup</h3>
+                        <p class="text-sm text-slate-600 dark:text-slate-400 mb-3">Check your device security score.</p>
+                        <button id="start-privacy-checkup-button" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-4 rounded-lg transition-colors text-sm flex items-center justify-center">Start Checkup</button>
+                    </div>
+
+                    <div>
+                    <!-- Toggle header with counter -->
+                    <button id="monitored-apps-toggle"
+                            class="w-full bg-slate-100 dark:bg-slate-800 p-4 rounded-lg flex justify-between items-center">
+                        <h3 class="font-semibold">Monitored Apps</h3>
+                        <svg id="monitored-apps-arrow" xmlns="http://www.w3.org/2000/svg"
+                            width="20" height="20" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round" class="transition-transform">
+                            <path d="m6 9 6 6 6-6"></path>
+                        </svg>
+                    </button>
+
+                    <!-- Apps list -->
+                    <div id="monitored-apps-content" class="pt-4">
+                    <div class="space-y-4">
+                        <div class="bg-slate-100 dark:bg-slate-800 p-3 rounded-lg space-y-3">
+
+                        <h4 class="text-sm font-semibold text-slate-600 dark:text-slate-300">Messaging</h4>
+
+                        <!-- Google Message -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                            <img src="https://placehold.co/32x32/3B82F6/FFFFFF?text=G" class="w-8 h-8 rounded-full">
+                            <span class="font-medium text-sm">Google Message</span>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" checked class="sr-only peer app-toggle">
+                            <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:bg-emerald-500 transition-colors"></div>
+                            <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
+                            </label>
+                        </div>
+
+                        <!-- Messenger -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                            <img src="https://placehold.co/32x32/0EA5E9/FFFFFF?text=M" class="w-8 h-8 rounded-full">
+                            <span class="font-medium text-sm">Messenger</span>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" checked class="sr-only peer app-toggle">
+                            <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:bg-emerald-500 transition-colors"></div>
+                            <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
+                            </label>
+                        </div>
+
+                        <!-- Gmail -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                            <img src="https://placehold.co/32x32/FF0000/FFFFFF?text=G" class="w-8 h-8 rounded-full">
+                            <span class="font-medium text-sm">Gmail</span>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" checked class="sr-only peer app-toggle">
+                            <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:bg-emerald-500 transition-colors"></div>
+                            <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
+                            </label>
+                        </div>
+
+                        </div>
+                    </div>
+                    </div>
+                </main>
+                <main id="alerts-view" class="hidden p-6 space-y-4">
+                  <div class="text-center p-3 bg-slate-100 dark:bg-slate-800 rounded-lg"><p class="text-xs text-slate-500 dark:text-slate-400">Alert history is cleared automatically after 30 days.</p></div>
+                    <div class="interactive-card bg-slate-100 dark:bg-slate-800 p-4 rounded-lg flex items-start space-x-4" data-title="High Severity Alert" data-details='{"source": "SMS", "threat_type": "Phishing", "action": "Blocked", "content": "Suspicious login attempt from an unrecognized device was blocked."}'>
+                        <div class="bg-red-500/10 text-red-500 w-10 h-10 flex items-center justify-center rounded-full flex-shrink-0"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg></div>
+                        <div><h4 class="font-bold">Verified Phishing Link Blocked</h4><p class="text-sm text-slate-600 dark:text-slate-400">A malicious link from Google SMS was neutralized. Tap for AI-powered details.</p><time class="text-xs text-slate-500">2 mins ago</time></div>
+                        <div class="flex gap-2 mt-3">
+                            <button class="alert-fix bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1 rounded text-sm">
+                            Fix
+                            </button>
+                            <button class="alert-ignore bg-red-500 hover:bg-red-600 px-3 py-1 rounded text-sm" style="color: white;">
+                            Ignore
+                            </button>
+                        </div>
+                  </div>
+                  <div class="interactive-card bg-slate-100 dark:bg-slate-800 p-4 rounded-lg flex items-start space-x-4" data-title="Potential Risk Alert" data-details='{"source": "Email", "threat_type": "Suspicious Link", "action": "Review", "content": "An email contained a shortened link that may redirect to an unknown site."}'>
+                        <div class="bg-yellow-500/10 text-yellow-500 w-10 h-10 flex items-center justify-center rounded-full flex-shrink-0"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v2m0 4h.01M21 12A9 9 0 1 1 3 12a9 9 0 0 1 18 0Z"></path></svg></div>
+                        <div><h4 class="font-bold">Suspicious Link Detected</h4><p class="text-sm text-slate-600 dark:text-slate-400">An email from Gmail contained a suspicious shortened link.</p><time class="text-xs text-slate-500">10 mins ago</time></div>
+                        <div class="flex gap-2 mt-3">
+                            <button class="alert-fix bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1 rounded text-sm">
+                            Fix
+                            </button>
+                            <button class="alert-ignore bg-red-500 hover:bg-red-600 px-3 py-1 rounded text-sm" style="color: white;">
+                            Ignore
+                            </button>
+                        </div>
+                  </div>
+                  <div class="interactive-card bg-slate-100 dark:bg-slate-800 p-4 rounded-lg flex items-start space-x-4" data-title="Potential Risk Alert" data-details='{"source": "Messenger", "threat_type": "Suspicious Link", "action": "Review", "content": "A spam message from Messenger may contain suspicious link."}'>
+                        <div class="bg-yellow-500/10 text-yellow-500 w-10 h-10 flex items-center justify-center rounded-full flex-shrink-0"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v2m0 4h.01M21 12A9 9 0 1 1 3 12a9 9 0 0 1 18 0Z"></path></svg></div>
+                        <div><h4 class="font-bold">Suspicious Link Detected</h4><p class="text-sm text-slate-600 dark:text-slate-400">A spam message from Messenger may contain suspicious link.</p><time class="text-xs text-slate-500">10 mins ago</time></div>
+                        <div class="flex gap-2 mt-3">
+                            <button class="alert-fix bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1 rounded text-sm">
+                            Fix
+                            </button>
+                            <button class="alert-ignore bg-red-500 hover:bg-red-600 px-3 py-1 rounded text-sm" style="color: white;">
+                            Ignore
+                            </button>
+                        </div>
+                  </div>
+                </main>
+                <main id="vpn-view" class="hidden p-6 text-center">
+                  <div class="space-y-8 flex flex-col items-center pt-16">
+                    <div id="vpn-status-indicator" class="relative w-40 h-40 flex items-center justify-center rounded-full bg-slate-500/10 text-slate-500 transition-colors"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z"></path></svg></div>
+                    <h3 id="vpn-status-text" class="text-2xl font-bold">You are Disconnected</h3>
+                    <p class="text-slate-500 dark:text-slate-400">Your connection is not secure.</p>
+                    <button id="vpn-connect-button" class="w-full max-w-xs bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg transition-colors">Connect</button>
+                  </div>
+                </main>
+                <main id="settings-view" class="hidden p-6">
+                    <div class="space-y-8">
+                        <div><h3 class="text-xs uppercase text-slate-500 font-semibold mb-3">User Profile & Alerts</h3>
+                            <div class="bg-slate-100 dark:bg-slate-800 rounded-lg p-4 space-y-4">
+                                <div><label for="email-input" class="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Email for Alerts</label><input type="email" id="email-input" class="w-full bg-slate-200 dark:bg-slate-700 rounded-md p-2 text-sm border-transparent focus:border-emerald-500 focus:ring-emerald-500" placeholder="user@gmail.com" readonly></div>
+                                <div><label for="name-input" class="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Full Name</label><input type="text" id="name-input" class="w-full bg-slate-200 dark:bg-slate-700 rounded-md p-2 text-sm border-transparent focus:border-emerald-500 focus:ring-emerald-500" placeholder="Enter your full name"></div>
+                                <div><label for="phone-input" class="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Mobile Number for Alerts</label><input type="tel" id="phone-input" class="w-full bg-slate-200 dark:bg-slate-700 rounded-md p-2 text-sm border-transparent focus:border-emerald-500 focus:ring-emerald-500" placeholder="e.g., +63 917 123 4567"></div>
+                            </div>
+                        </div>
+                        <div><h3 class="text-xs uppercase text-slate-500 font-semibold mb-3">Appearance</h3><div class="bg-slate-100 dark:bg-slate-800 rounded-lg p-4 flex justify-between items-center"><span class="font-medium">Dark Mode</span><div class="relative inline-flex items-center cursor-pointer"><input type="checkbox" id="theme-toggle" class="sr-only toggle-checkbox"><label for="theme-toggle" class="toggle-label relative w-11 h-6 bg-slate-300 dark:bg-slate-700 rounded-full transition-colors"><span class="toggle-ball absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform"></span></label></div></div></div>
+                    </div>
+                     <button id="save-settings-button" class="mt-8 w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg transition-colors">Save Settings</button>
+                     <button id="signout-button"class="mt-4 w-full bg-red-500/20 hover:bg-red-500/30 text-red-500 dark:text-red-400 font-bold py-3 px-4 rounded-lg transition-colors">Sign Out</button>
+                     <footer class="mt-8 text-center text-xs text-slate-500 dark:text-slate-400"><p>&copy; 2024 SafePhish</p></footer>
+                </main>
+            </div>
+            <nav class="bg-slate-200/80 dark:bg-slate-800/80 backdrop-blur-sm p-4 pt-2 border-t border-slate-200 dark:border-slate-700 sticky bottom-0 z-10 flex-shrink-0">
+                 <div class="flex justify-around items-center">
+                    <a href="#" data-view="dashboard-view" class="nav-item flex flex-col items-center text-emerald-500 w-1/4 pt-2"><svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="5" rx="1" ry="1" /><rect x="3" y="10" width="8" height="11" rx="1" ry="1" /><rect x="13" y="10" width="8" height="11" rx="1" ry="1" /></svg><span class="text-xs font-semibold">Dashboard</span></a>
+                    <a href="#" data-view="alerts-view" class="nav-item flex flex-col items-center text-slate-500 w-1/4 pt-2"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mb-1"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg><span class="text-xs font-semibold">Alerts</span></a>
+                    <button id="open-analyzer-button" class="bg-emerald-500 flex items-center justify-center text-white shadow-lg -mt-6 border-4 border-white dark:border-slate-900 transform hover:scale-105 transition-transform focus:outline-none z-20" style="border-radius:100px; width:4.8rem; height:4rem;"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class=""><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></button>
+                    <a href="#" data-view="vpn-view" class="nav-item flex flex-col items-center text-slate-500 w-1/4 pt-2"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mb-1"><path d="M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z"></path></svg><span class="text-xs font-semibold">VPN</span></a>
+                    <a href="#" data-view="settings-view" class="nav-item flex flex-col items-center text-slate-500 w-1/4 pt-2"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mb-1"><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path><circle cx="12" cy="12" r="3"></circle></svg><span class="text-xs font-semibold">Settings</span></a>
+                </div>
+            </nav>
+        </div>
+        <div id="info-modal" class="absolute inset-0 bg-black/40 modal-overlay z-50 flex justify-center items-end p-4 hidden"><div class="modal-content bg-white dark:bg-slate-800 rounded-t-2xl w-full max-w-md p-6 transform translate-y-full"><div class="flex justify-between items-center mb-4"><h2 id="info-modal-title" class="text-lg font-bold">Details</h2><button id="close-info-modal-button" class="text-2xl font-light text-slate-500 hover:text-slate-700">&times;</button></div><div id="info-modal-content" class="text-sm text-slate-600 dark:text-slate-400 mb-4 space-y-2"></div></div></div>
+        <div id="toast" class="hidden fixed top-5 left-1/2 transform -translate-x-1/2 bg-emerald-500 text-white px-6 py-3 rounded-lg shadow-lg text-base font-semibold z-50 transition-all duration-300 opacity-0 -translate-y-16"></div>
+    </div>
+
+<script>
+// --- GOOGLE LOGIN HANDLER ---
+function handleCredentialResponse(response) {
+  const idToken = response.credential;
+  try {
+    const payloadBase64 = idToken.split('.')[1];
+    const decodedJson = atob(payloadBase64.replace(/-/g, '+').replace(/_/g, '/'));
+    const userData = JSON.parse(decodedJson);
+
+    document.getElementById('login-screen').classList.add('hidden');
+    document.querySelector('.app-shell').classList.remove('hidden');
+
+    document.getElementById('name-input').value = userData.name || '';
+    document.getElementById('email-input').value = userData.email || '';
+
+    localStorage.setItem('userIsLoggedIn', 'true');
+    localStorage.setItem('userName', userData.name || '');
+    localStorage.setItem('userEmail', userData.email || '');
+
+    animateSecurityScore(90);
+  } catch (err) {
+    console.error("Login error:", err);
+    alert('An error occurred during login.');
+  }
+}
+window.handleCredentialResponse = handleCredentialResponse;
+
+
+// --- APP LOGIC ---
+document.addEventListener('DOMContentLoaded', () => {
+  if (localStorage.getItem('userIsLoggedIn') === 'true') {
+    document.getElementById('login-screen').classList.add('hidden');
+    document.querySelector('.app-shell').classList.remove('hidden');
+    document.getElementById('name-input').value = localStorage.getItem('userName') || '';
+    document.getElementById('email-input').value = localStorage.getItem('userEmail') || '';
+    animateSecurityScore(90);
+  }
+
+  // === Common Elements ===
+  const navItems = document.querySelectorAll('.nav-item');
+  const views = document.querySelectorAll('main[id$="-view"]');
+  const monitoredAppsToggle = document.getElementById('monitored-apps-toggle');
+  const monitoredAppsContent = document.getElementById('monitored-apps-content');
+  const monitoredAppsArrow = document.getElementById('monitored-apps-arrow');
+  const alertCards = document.querySelectorAll('.interactive-card');
+  const infoModal = document.getElementById('info-modal');
+  const infoModalTitle = document.getElementById('info-modal-title');
+  const infoModalContent = document.getElementById('info-modal-content');
+  const closeInfoModalButton = document.getElementById('close-info-modal-button');
+  const themeToggle = document.getElementById('theme-toggle');
+  const vpnButton = document.getElementById('vpn-connect-button');
+  const vpnStatusText = document.getElementById('vpn-status-text');
+  const vpnStatusIndicator = document.getElementById('vpn-status-indicator');
+  const saveSettingsButton = document.getElementById('save-settings-button');
+  const toast = document.getElementById('toast');
+  const signoutButton = document.getElementById('signout-button');
+  const checkupButton = document.getElementById('start-privacy-checkup-button');
+  const analyzerBtn = document.getElementById('open-analyzer-button');
+
+  // === Helper to open modal ===
+  function openInfoModal(title, html) {
+    infoModalTitle.textContent = title;
+    infoModalContent.innerHTML = html;
+    infoModal.classList.remove('hidden');
+    setTimeout(() => {
+      infoModal.classList.add('opacity-100');
+      infoModal.querySelector('.modal-content').classList.remove('translate-y-full');
+    }, 10);
+  }
+
+  // === Close modal ===
+  function closeInfoModal() {
+    infoModal.querySelector('.modal-content').classList.add('translate-y-full');
+    infoModal.classList.remove('opacity-100');
+    setTimeout(() => infoModal.classList.add('hidden'), 300);
+  }
+  closeInfoModalButton.addEventListener('click', closeInfoModal);
+  infoModal.addEventListener('click', (e) => {
+    if (e.target === infoModal) closeInfoModal();
+  });
+
+  // === Navigation ===
+  navItems.forEach(item => {
+    item.addEventListener('click', (e) => {
+      e.preventDefault();
+      const targetViewId = item.dataset.view;
+
+      navItems.forEach(nav => nav.classList.remove('text-emerald-500'));
+      navItems.forEach(nav => nav.classList.add('text-slate-500'));
+
+      item.classList.add('text-emerald-500');
+      item.classList.remove('text-slate-500');
+
+      views.forEach(view => view.classList.add('hidden'));
+      document.getElementById(targetViewId).classList.remove('hidden');
+    });
+  });
+
+    // === Monitored Apps Toggle ===
+    monitoredAppsToggle.addEventListener('click', () => {
+        monitoredAppsContent.classList.toggle('expanded');
+        monitoredAppsArrow.classList.toggle('rotate-180');
+    });
+
+    // === Monitored Apps Count and Security Score ===
+        const monitoredCountEl = document.getElementById('monitored-apps-count');
+        const monitoredContainer = document.getElementById('monitored-apps-content');
+
+        function updateMonitoredCountAndScore() {
+        // how many apps are ON
+        const totalApps = monitoredContainer.querySelectorAll('input.app-toggle').length;
+        const activeApps = monitoredContainer.querySelectorAll('input.app-toggle:checked').length;
+
+        // update counter text
+        monitoredCountEl.textContent = `${activeApps} Apps Monitored`;
+
+        // compute percentage
+        const score = totalApps === 0 ? 0 : Math.round((activeApps / totalApps) * 100);
+
+        // update security score circle and text
+        animateSecurityScore(score);
+        }
+
+        // initialize on page load
+        updateMonitoredCountAndScore();
+
+        // listen for toggle changes
+        monitoredContainer.addEventListener('change', (e) => {
+        if (e.target.classList.contains('app-toggle')) {
+            updateMonitoredCountAndScore();
+        }
+        });
+
+
+    // === Alerts Tab Fix & Ignore Buttons ===
+    document.getElementById('alerts-view').addEventListener('click', (e) => {
+    if (e.target.classList.contains('alert-fix') || e.target.classList.contains('alert-ignore')) {
+        
+        if (e.target.classList.contains('alert-fix')) {
+        showToast("Threat fixed successfully!");
+        }
+        
+        if (e.target.classList.contains('alert-ignore')) {
+        showToast("Alert ignored.");
+        }
+
+        const card = e.target.closest('.interactive-card');
+        if (card) card.remove();
+    }
+    });
+
+  // === Alert Modal (Existing Cards) ===
+  alertCards.forEach(card => {
+    card.addEventListener('click', () => {
+      const title = card.dataset.title;
+      const details = JSON.parse(card.dataset.details);
+      const html = `
+        <p><strong>Source:</strong> ${details.source}</p>
+        <p><strong>Threat Type:</strong> ${details.threat_type}</p>
+        <p><strong>Action Taken:</strong> ${details.action}</p>
+        <p><strong>Details:</strong> ${details.content}</p>
+      `;
+      openInfoModal(title, html);
+    });
+  });
+
+
+  // === Theme Toggle ===
+  const applyTheme = (theme) => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+      document.documentElement.classList.remove('light');
+      themeToggle.checked = true;
+    } else {
+      document.documentElement.classList.remove('dark');
+      document.documentElement.classList.add('light');
+      themeToggle.checked = false;
+    }
+  };
+  applyTheme(localStorage.getItem('theme') || 'light');
+  themeToggle.addEventListener('change', () => {
+    const newTheme = themeToggle.checked ? 'dark' : 'light';
+    localStorage.setItem('theme', newTheme);
+    applyTheme(newTheme);
+  });
+
+  // === VPN Toggle ===
+  vpnButton.addEventListener('click', () => {
+    const isConnected = vpnButton.textContent === 'Disconnect';
+    if (isConnected) {
+      vpnButton.textContent = 'Connect';
+      vpnButton.classList.remove('bg-red-500','hover:bg-red-600');
+      vpnButton.classList.add('bg-emerald-500','hover:bg-emerald-600');
+      vpnStatusText.textContent = 'You are Disconnected';
+      vpnStatusIndicator.classList.remove('bg-emerald-500/10','text-emerald-500');
+      vpnStatusIndicator.classList.add('bg-slate-500/10','text-slate-500');
+      vpnStatusIndicator.querySelector('.animate-ping')?.remove();
+    } else {
+      vpnButton.textContent = 'Disconnect';
+      vpnButton.classList.add('bg-red-500','hover:bg-red-600');
+      vpnButton.classList.remove('bg-emerald-500','hover:bg-emerald-600');
+      vpnStatusText.textContent = 'You are Connected';
+      vpnStatusIndicator.classList.add('bg-emerald-500/10','text-emerald-500');
+      vpnStatusIndicator.classList.remove('bg-slate-500/10','text-slate-500');
+      const ring = document.createElement('div');
+      ring.className = 'absolute inset-0 rounded-full bg-emerald-500/20 animate-ping';
+      vpnStatusIndicator.prepend(ring);
+    }
+  });
+
+  // === Save Settings ===
+  saveSettingsButton.addEventListener('click', () => {
+    showToast("Settings saved successfully!");
+  });
+
+  // === Sign Out ===
+  signoutButton.addEventListener('click', () => {
+    localStorage.clear();
+    google.accounts.id.disableAutoSelect();
+    window.location.reload();
+  });
+
+  // === Privacy Checkup ===
+  checkupButton.addEventListener('click', () => {
+    checkupButton.disabled = true;
+    checkupButton.textContent = 'Checking...';
+
+    setTimeout(() => {
+      animateSecurityScore(95);
+      checkupButton.textContent = 'Checkup Complete!';
+      checkupButton.classList.remove('bg-emerald-500','hover:bg-emerald-600');
+      checkupButton.classList.add('bg-blue-500','hover:bg-blue-600');
+
+      showToast("Privacy Checkup completed successfully!");
+
+      setTimeout(() => {
+        checkupButton.textContent = 'Start Checkup';
+        checkupButton.disabled = false;
+        checkupButton.classList.remove('bg-blue-500','hover:bg-blue-600');
+        checkupButton.classList.add('bg-emerald-500','hover:bg-emerald-600');
+      }, 4000);
+    }, 2000);
+  });
+
+  // === Threat Analyzer ===
+  analyzerBtn.addEventListener('click', () => {
+    const analyzerHtml = `
+      <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">
+        Paste text, a link, or code below to scan for threats.
+      </p>
+      <textarea id="analyzer-input" class="w-full h-24 bg-slate-100 dark:bg-slate-700 rounded-lg p-2 text-sm"
+        placeholder="e.g., Your account has been suspended! Click here to verify..."></textarea>
+      <button id="analyze-button" class="mt-4 w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg">
+        Analyze
+      </button>
+      <div id="analyzer-results" class="mt-4 text-sm"></div>
+    `;
+    openInfoModal('AI Threat Analyzer', analyzerHtml);
+  });
+
+  // === Handle Analyzer Actions ===
+  infoModal.addEventListener('click', (e) => {
+    if (e.target.closest('#analyze-button')) {
+      const text = document.getElementById('analyzer-input')?.value.toLowerCase().trim();
+      if (!text) return;
+      const results = document.getElementById('analyzer-results');
+
+      const suspiciousPatterns = [
+        "urgent!",
+        "action required",
+        "you've won a lottery",
+        "please verify your account details",
+        "dear customer",
+        "http//",
+        "block",
+        "account lost",
+        "account blocked",
+        "click here",
+        "bit.ly",
+        "pay now"
+      ];
+
+      const detected = suspiciousPatterns.find(p => text.includes(p.toLowerCase()));
+
+      if (detected) {
+        results.innerHTML = `
+          <div class="p-4 bg-red-500/10 text-red-600 dark:text-red-400 rounded-lg">
+            <div class="flex justify-between items-center">
+              <h3 class="font-bold">⚠️ WARNING! PHISHING ALERT</h3>
+              <button id="close-warning" class="text-xs bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600">Exit</button>
+            </div>
+            <p class="mt-2"><b>Suspicious phrase detected:</b> "${detected}"</p>
+            <p class="mt-1 text-sm">This looks like a phishing attempt. Avoid clicking links or sharing details.</p>
+          </div>
+        `;
+        results.querySelector('#close-warning').addEventListener('click', () => results.innerHTML = '');
+      } else {
+        results.innerHTML = `
+          <div class="p-3 rounded-lg bg-emerald-500/10 text-emerald-500">
+            <div class="font-bold">✅ Safe</div>
+            <div class="mt-2 text-sm">No suspicious keywords detected.</div>
+          </div>
+        `;
+      }
+    }
+  });
+
+  // === Toast helper ===
+  function showToast(msg) {
+    toast.textContent = msg;
+    toast.classList.remove('hidden');
+    setTimeout(() => toast.classList.remove('opacity-0','-translate-y-16'), 10);
+    setTimeout(() => {
+      toast.classList.add('opacity-0','-translate-y-16');
+      setTimeout(() => toast.classList.add('hidden'), 300);
+    }, 3000);
+  }
+});
+
+// --- Animate Security Score ---
+function animateSecurityScore(target) {
+  const scoreElement = document.getElementById('security-score-text');
+  const circleBar = document.querySelector('.progress-circle-bar');
+  const circumference = 2 * Math.PI * 45;
+
+  circleBar.style.strokeDashoffset = circumference - (target / 100) * circumference;
+
+  let current = 0;
+  const interval = setInterval(() => {
+    if (current >= target) {
+      clearInterval(interval);
+      scoreElement.textContent = `${target}%`;
+      return;
+    }
+    current++;
+    scoreElement.textContent = `${current}%`;
+  }, 15);
+}
+
+    // Count only apps with switch ON
+        function updateMonitoredAppsCount() {
+        const activeApps = document.querySelectorAll('#monitored-apps-content input[type="checkbox"]:checked');
+        const total = activeApps.length;
+         document.getElementById('monitored-apps-count').textContent = `${total} Apps Monitored in Total`;
+     }
+
+</script>
+
+
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
